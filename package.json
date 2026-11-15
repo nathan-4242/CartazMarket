@@ -1,0 +1,15 @@
+{
+  "name": "cartazmarket",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "corepack pnpm --filter @cartazmarket/api dev",
+    "build": "corepack pnpm --filter @cartazmarket/api build",
+    "typecheck": "corepack pnpm --filter @cartazmarket/api typecheck",
+    "db:migrate": "corepack pnpm --filter @cartazmarket/api db:migrate"
+  }
+}

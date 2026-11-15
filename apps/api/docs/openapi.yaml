@@ -1,0 +1,696 @@
+openapi: 3.1.0
+info:
+  title: CartazMarket API
+  version: 0.1.0
+  description: API piloto para importar catálogo, gerenciar promoções e acompanhar cartazes por loja.
+servers:
+  - url: http://127.0.0.1:3000
+    description: Desenvolvimento local
+tags:
+  - name: Health
+  - name: Session
+  - name: Catalog
+  - name: Promotions
+  - name: Labels
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Confirma que a API está ativa
+      security: []
+      responses:
+        '200':
+          description: API ativa
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { const: ok }
+                  service: { type: string }
+                required: [status, service]
+  /ready:
+    get:
+      tags: [Health]
+      operationId: getReadiness
+      summary: Confirma acesso ao PostgreSQL
+      security: []
+      responses:
+        '200': { description: API e banco prontos }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /v1/me:
+    get:
+      tags: [Session]
+      operationId: getCurrentUser
+      summary: Retorna o usuário autenticado e suas organizações
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Identidade e associações
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/UserIdentity' }
+                  organizations:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrganizationMembership' }
+                required: [user, organizations]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/stores/{storeId}/imports/products:
+    post:
+      tags: [Catalog]
+      operationId: importProductsCsv
+      summary: Importa e publica produtos e preços por CSV
+      description: Requer papel owner ou manager. Limite de 8 MiB e 50 mil produtos.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema: { type: string }
+            example: |-
+              sku;nome;unidade;preco
+              7890000000012;Arroz tipo 1 5kg;UN;24,90
+      responses:
+        '201':
+          description: Importação publicada de forma atômica
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '422': { $ref: '#/components/responses/InvalidCsv' }
+  /v1/stores/{storeId}/imports:
+    get:
+      tags: [Catalog]
+      operationId: listImportRuns
+      summary: Consulta o histórico de importações da loja
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [received, processing, applied, failed] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+      responses:
+        '200':
+          description: Execuções mais recentes primeiro
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imports: { type: array, items: { $ref: '#/components/schemas/ImportRun' } }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                required: [imports, limit, offset]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/stores/{storeId}/price-changes:
+    get:
+      tags: [Catalog]
+      operationId: listPriceChanges
+      summary: Consulta o histórico de alterações de preço
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: productId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          description: Data/hora ISO com fuso, inclusiva
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: Data/hora ISO com fuso, inclusiva
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+      responses:
+        '200':
+          description: Alterações mais recentes primeiro
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changes: { type: array, items: { $ref: '#/components/schemas/PriceChange' } }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                required: [changes, limit, offset]
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/stores/{storeId}/products:
+    get:
+      tags: [Catalog]
+      operationId: listStoreProducts
+      summary: Lista produtos e preços atuais da loja
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, maxLength: 100 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, maximum: 1000000, default: 0 }
+      responses:
+        '200':
+          description: Produtos ordenados pelo nome
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items: { $ref: '#/components/schemas/StoreProduct' }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                required: [products, limit, offset]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/stores/{storeId}/promotions:
+    get:
+      tags: [Promotions]
+      operationId: listPromotions
+      summary: Lista promoções da loja
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [scheduled, active, expired, cancelled] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 1000000, default: 0 }
+      responses:
+        '200':
+          description: Promoções com status calculado pela vigência
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  promotions:
+                    type: array
+                    items: { $ref: '#/components/schemas/Promotion' }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                required: [promotions, limit, offset]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Promotions]
+      operationId: createPromotion
+      summary: Agenda uma promoção para um produto
+      description: Requer owner ou manager. O preço deve ser menor que o preço atual e os períodos não podem se sobrepor para o mesmo produto.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePromotion' }
+            example:
+              productId: 52f491c3-9043-4d2e-80ac-f6dd9806868a
+              promotionalAmount: '19.90'
+              startsAt: '2026-11-20T08:00:00-03:00'
+              endsAt: '2026-11-25T22:00:00-03:00'
+      responses:
+        '201':
+          description: Promoção criada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  promotion: { $ref: '#/components/schemas/Promotion' }
+                  productName: { type: string }
+                  status: { type: string, enum: [scheduled, active] }
+                required: [promotion, productName, status]
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/stores/{storeId}/promotions/{promotionId}/cancel:
+    post:
+      tags: [Promotions]
+      operationId: cancelPromotion
+      summary: Cancela uma promoção
+      description: Cartazes prontos para imprimir são cancelados; cartazes impressos ficam imediatamente pendentes de retirada.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: promotionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Promoção cancelada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/stores/{storeId}/labels:
+    get:
+      tags: [Labels]
+      operationId: listLabels
+      summary: Lista cartazes e situação de impressão/retirada
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [ready_to_print, printed, removed, cancelled] }
+        - name: removalDueOnly
+          in: query
+          required: false
+          schema: { type: string, enum: ['true', 'false'] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 1000000, default: 0 }
+      responses:
+        '200':
+          description: Cartazes ordenados do mais recente para o mais antigo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  labels:
+                    type: array
+                    items: { $ref: '#/components/schemas/PriceLabel' }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                required: [labels, limit, offset]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Labels]
+      operationId: createLabel
+      summary: Prepara um cartaz com snapshot do preço
+      description: Se promotionId for omitido, usa a promoção ativa do produto, se existir. Uma promoção futura precisa ser indicada explicitamente.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateLabel' }
+      responses:
+        '201':
+          description: Cartaz pronto para impressão no navegador; a confirmação de impressão é uma ação separada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  label: { $ref: '#/components/schemas/PriceLabel' }
+                  productName: { type: string }
+                  unit: { type: string }
+                  note: { type: string }
+                required: [label, productName, unit, note]
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/stores/{storeId}/labels/{labelId}/print:
+    get:
+      tags: [Labels]
+      operationId: getLabelPrintPage
+      summary: Gera uma página pronta para imprimir no navegador
+      description: Retorna HTML com CSS de impressão e tamanho de página em milímetros. A aplicação pode buscar com o token de acesso, abrir o conteúdo e chamar a impressão do navegador. Isto não envia diretamente para uma impressora.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: labelId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: widthMm
+          in: query
+          schema: { type: number, minimum: 40, maximum: 300, default: 100 }
+        - name: heightMm
+          in: query
+          schema: { type: number, minimum: 40, maximum: 300, default: 70 }
+      responses:
+        '200':
+          description: Documento HTML pronto para a caixa de impressão
+          content:
+            text/html:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/stores/{storeId}/labels/print-batch:
+    get:
+      tags: [Labels]
+      operationId: getLabelPrintBatch
+      summary: Gera páginas de impressão para até 50 cartazes
+      description: Todos os cartazes devem pertencer à loja e estar aguardando impressão. A resposta contém uma página por cartaz; não envia diretamente à impressora.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: labelIds
+          in: query
+          required: true
+          description: IDs de cartazes separados por vírgula, máximo de 50
+          schema: { type: string, maxLength: 1850 }
+        - name: widthMm
+          in: query
+          schema: { type: number, minimum: 40, maximum: 300, default: 100 }
+        - name: heightMm
+          in: query
+          schema: { type: number, minimum: 40, maximum: 300, default: 70 }
+      responses:
+        '200':
+          description: Documento HTML com uma etiqueta por página
+          content:
+            text/html:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/stores/{storeId}/labels/{labelId}/printed:
+    post:
+      tags: [Labels]
+      operationId: markLabelPrinted
+      summary: Registra a impressão física do cartaz
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: labelId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Impressão registrada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/stores/{storeId}/labels/{labelId}/removed:
+    post:
+      tags: [Labels]
+      operationId: markLabelRemoved
+      summary: Confirma retirada de um cartaz impresso
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: labelId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Retirada registrada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/stores/{storeId}/alerts:
+    get:
+      tags: [Labels]
+      operationId: listStoreAlerts
+      summary: Lista alertas automáticos de cartazes vencidos
+      description: A API cria o alerta em segundo plano até 15 segundos após o vencimento do cartaz impresso. O frontend pode consultar esta rota para mostrar alertas dentro do sistema.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: status
+          in: query
+          schema: { type: string, enum: [unread, read, resolved] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+      responses:
+        '200':
+          description: Alertas mais recentes primeiro
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts: { type: array, items: { $ref: '#/components/schemas/StoreAlert' } }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                required: [alerts, limit, offset]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/stores/{storeId}/alerts/{alertId}/read:
+    post:
+      tags: [Labels]
+      operationId: markAlertRead
+      summary: Marca um alerta como lido
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: alertId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Alerta marcado como lido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    StoreId:
+      name: storeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Unauthorized:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Papel do usuário não permite a operação
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Loja, produto, promoção ou cartaz não encontrado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Conflito de estado ou período sobreposto
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidRequest:
+      description: Corpo ou parâmetro inválido
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidCsv:
+      description: CSV inválido; preços anteriores preservados
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: '#/components/schemas/Error' }
+              - type: object
+                properties:
+                  issues: { type: array, items: { type: string } }
+    UnsupportedMediaType:
+      description: Envie o corpo como text/csv
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServiceUnavailable:
+      description: Banco indisponível
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+        requestId: { type: string }
+      required: [error]
+    UserIdentity:
+      type: object
+      properties:
+        userId: { type: string, format: uuid }
+        email: { type: [string, 'null'], format: email }
+      required: [userId, email]
+    OrganizationMembership:
+      type: object
+      properties:
+        organizationId: { type: string, format: uuid }
+        organizationName: { type: string }
+        role: { type: string, enum: [owner, manager, operator] }
+      required: [organizationId, organizationName, role]
+    ImportResult:
+      type: object
+      properties:
+        syncRunId: { type: string, format: uuid }
+        status: { const: applied }
+        rowsImported: { type: integer }
+        productsCreated: { type: integer }
+        pricesChanged: { type: integer }
+      required: [syncRunId, status, rowsImported, productsCreated, pricesChanged]
+    ImportRun:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sourceSystem: { type: string }
+        status: { type: string, enum: [received, processing, applied, failed] }
+        rowsReceived: { type: integer }
+        productsCreated: { type: integer }
+        pricesChanged: { type: integer }
+        errorSummary: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: [string, 'null'], format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+      required: [id, sourceSystem, status, rowsReceived, productsCreated, pricesChanged, createdAt]
+    PriceChange:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        productName: { type: string }
+        syncRunId: { type: string, format: uuid }
+        oldAmount: { type: [string, 'null'] }
+        newAmount: { type: string }
+        occurredAt: { type: string, format: date-time }
+      required: [id, productId, productName, syncRunId, newAmount, occurredAt]
+    StoreAlert:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { const: label_removal_due }
+        status: { type: string, enum: [unread, read, resolved] }
+        labelId: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        productName: { type: string }
+        displayAmount: { type: string }
+        removalDueAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        readAt: { type: [string, 'null'], format: date-time }
+        readBy: { type: [string, 'null'], format: uuid }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+      required: [id, type, status, labelId, productId, productName, displayAmount, removalDueAt, createdAt]
+    StoreProduct:
+      type: object
+      properties:
+        productId: { type: string, format: uuid }
+        name: { type: string }
+        unit: { type: string }
+        currentAmount: { type: string, pattern: '^\d+\.\d{2}$' }
+        currency: { const: BRL }
+        priceUpdatedAt: { type: string, format: date-time }
+      required: [productId, name, unit, currentAmount, currency, priceUpdatedAt]
+    CreatePromotion:
+      type: object
+      properties:
+        productId: { type: string, format: uuid }
+        promotionalAmount: { type: string, pattern: '^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$' }
+        startsAt: { type: string, format: date-time, description: Deve incluir fuso horário. }
+        endsAt: { type: string, format: date-time, description: Deve incluir fuso horário. }
+      required: [productId, promotionalAmount, startsAt, endsAt]
+    Promotion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        productName: { type: string }
+        regularAmount: { type: string }
+        promotionalAmount: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        cancelledAt: { type: [string, 'null'], format: date-time }
+        cancelledBy: { type: [string, 'null'], format: uuid }
+        status: { type: string, enum: [scheduled, active, expired, cancelled] }
+        createdAt: { type: string, format: date-time }
+      required: [id, productId, regularAmount, promotionalAmount, startsAt, endsAt, status, createdAt]
+    CreateLabel:
+      type: object
+      properties:
+        productId: { type: string, format: uuid }
+        promotionId: { type: string, format: uuid }
+      required: [productId]
+    PriceLabel:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        productName: { type: string }
+        unit: { type: string }
+        promotionId: { type: [string, 'null'], format: uuid }
+        regularAmount: { type: string }
+        displayAmount: { type: string }
+        promotionStartsAt: { type: [string, 'null'], format: date-time }
+        removalDueAt: { type: [string, 'null'], format: date-time }
+        status: { type: string, enum: [ready_to_print, printed, removed, cancelled] }
+        removalDue: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        printedAt: { type: [string, 'null'], format: date-time }
+        removedAt: { type: [string, 'null'], format: date-time }
+        printedBy: { type: [string, 'null'], format: uuid }
+        removedBy: { type: [string, 'null'], format: uuid }
+      required: [id, productId, regularAmount, displayAmount, status, createdAt]
