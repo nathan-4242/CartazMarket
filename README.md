@@ -2,10 +2,12 @@
 
 Base do backend do piloto CartazMarket. O foco desta etapa é receber uma planilha autorizada, validar tudo antes da publicação e manter histórico de preços sem escrever no ERP.
 
+Se você está desenvolvendo o frontend, comece pelo [handoff do backend](docs/HANDOFF_FRONTEND.md). O trabalho pendente está organizado nos [issues do GitHub](https://github.com/nathan-4242/CartazMarket/issues).
+
 ## Arquitetura
 
 ```text
-Aplicação web (futura)
+Aplicação web (em desenvolvimento)
   └── Supabase Auth emite token de usuário
         └── API Fastify valida o token via JWKS e confere associação/loja
               └── PostgreSQL próprio guarda catálogo, preços e histórico
