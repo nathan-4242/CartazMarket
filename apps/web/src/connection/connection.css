@@ -1,0 +1,31 @@
+.connected-page h1 { margin-bottom:24px; }
+.connection-form,.promotion-form { display:grid; gap:12px; border:1px solid var(--border); background:white; border-radius:12px; padding:24px; margin-block:20px; }
+.connection-form { max-width:500px; }
+.connected-page input,.connected-page select { min-height:40px; padding:8px 10px; border:1px solid #cbd5e1; border-radius:7px; font:inherit; width:100%; background:white; }
+.connected-page label { font-size:13px; font-weight:600; display:grid; gap:6px; }
+.connection-footnote { font-size:12px; margin-block:12px; }
+.connection-empty { background:white; padding:28px; border:1px solid var(--border); border-radius:12px; margin:20px 0; }
+.connection-empty .button { margin-top:16px; }
+.data-toolbar { display:flex; gap:12px; align-items:end; margin:20px 0; }
+.data-toolbar label { flex:1; max-width:420px; }
+.data-table-wrap { overflow:auto; border:1px solid var(--border); border-radius:12px; background:white; }
+.data-table { width:100%; border-collapse:collapse; text-align:left; font-size:13px; }
+.data-table th { background:#f8fafc; color:#475569; font-size:12px; padding:14px; white-space:nowrap; }
+.data-table td { border-top:1px solid var(--border); padding:15px 14px; vertical-align:middle; min-width:110px; }
+.data-table td:first-child { min-width:190px; }
+.row-actions,.form-actions { display:flex; gap:7px; flex-wrap:wrap; }
+.row-actions button { white-space:nowrap; }
+.data-badge { background:#f1f5f9; border-radius:5px; padding:5px 8px; white-space:nowrap; }
+.pagination { display:flex; justify-content:flex-end; align-items:center; gap:14px; margin-top:20px; font-size:13px; }
+.form-row { display:flex; flex-wrap:wrap; gap:12px; }
+.form-row label { flex:1; min-width:160px; }
+.record-id { display:block; color:#64748b; margin-top:5px; overflow-wrap:anywhere; font-size:10px; }
+.api-error { color:#a80000; margin-block:12px; }
+.account-summary { margin-top:auto; padding:24px 10px 8px; display:grid; gap:7px; font-size:13px; overflow-wrap:anywhere; }
+.account-summary small { color:#a7b4c7; }
+.account-summary button,.account-summary a { background:none; border:0; color:#ffd600; cursor:pointer; text-align:left; padding:4px 0; font:inherit; }
+.remote-label { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:16px; border:1px solid #b7d4cc; border-radius:10px; margin-bottom:16px; background:#f2faf7; }
+.remote-label p { font-size:12px; }
+.remote-label button { margin-left:auto; }
+.remote-label span { flex-basis:100%; font-size:13px; }
+@media(max-width:620px){.account-summary{padding-top:12px;}.data-toolbar{flex-wrap:wrap;}}

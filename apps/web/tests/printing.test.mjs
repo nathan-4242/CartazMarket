@@ -1,0 +1,74 @@
+import assert from "node:assert/strict";
+import { readFile, mkdir } from "node:fs/promises";
+import {chromium} from "playwright-core";
+import {preview} from "vite";
+await mkdir("node_modules/.cache/printing-tests",{recursive:true});
+const server=await preview({root:".",preview:{port:5198,strictPort:true}});
+const browser=await chromium.launch({channel:"msedge",headless:true});
+try{
+ const page=await browser.newPage({viewport:{width:1500,height:1100},acceptDownloads:true});
+ page.setDefaultTimeout(20000);
+ const errors=[];page.on("pageerror",e=>errors.push(e.message));
+ await page.goto("http://localhost:5198/editor");
+ await page.getByLabel("Nome do produto",{exact:true}).fill("ALFACE\nCRESPA");
+ await page.getByLabel("Preço (R$)").fill("2,99");
+ await page.getByLabel("Unidade de comercialização").selectOption("KG");
+ await page.getByLabel("Papel",{exact:true}).selectOption("A6");
+ await page.getByRole("combobox",{name:/^Modelo/}).selectOption("hortifruti");
+ await page.evaluate(()=>document.fonts.ready);
+ await page.locator(".editor-stage .paper-preview").screenshot({path:"node_modules/.cache/printing-tests/phase3-preview.png"});
+ for(const orientation of ["portrait","landscape"]){
+  await page.getByLabel("Orientação",{exact:true}).selectOption(orientation);
+  const downloadPromise=page.waitForEvent("download");
+  await page.getByRole("button",{name:"PNG · 300 dpi",exact:true}).click();
+  const download=await downloadPromise;
+  const path="node_modules/.cache/printing-tests/phase3-"+orientation+".png";
+  await download.saveAs(path);
+  const bytes=await readFile(path);
+  const density=bytes.indexOf(Buffer.from("pHYs"));
+  assert.ok(density>0);
+  assert.equal(bytes.readUInt32BE(density+4),11811);
+  assert.equal(bytes.readUInt32BE(16),Math.round((orientation==="portrait"?105:148)/25.4*300));
+  assert.equal(bytes.readUInt32BE(20),Math.round((orientation==="portrait"?148:105)/25.4*300));
+ }
+ for(const [paper,w,h] of [["A2",594,420],["A3",420,297],["A4",297,210],["A5",210,148],["A6",148,105]]){
+  await page.getByLabel("Papel",{exact:true}).selectOption(paper);
+  const downloadPromise=page.waitForEvent("download");
+  await page.getByRole("button",{name:"Exportar PDF",exact:true}).click();
+  const download=await downloadPromise;
+  const path="node_modules/.cache/printing-tests/phase3-"+paper+".pdf";await download.saveAs(path);
+  const pdf=(await readFile(path)).toString("latin1");
+  const box=/\/MediaBox\s*\[\s*0\s+0\s+([\d.]+)\s+([\d.]+)/.exec(pdf);
+  assert.ok(box,"MediaBox "+paper);
+  assert.ok(Math.abs(Number(box[1])-w*72/25.4)<0.1,paper);
+  assert.ok(Math.abs(Number(box[2])-h*72/25.4)<0.1,paper);
+  assert.ok(!pdf.includes("/Subtype /Image"),"vector "+paper);
+ }
+ await page.getByLabel("Selecionar elemento",{exact:true}).selectOption("product");
+ await page.getByRole("combobox",{name:/^Fonte/}).selectOption("PT Serif");
+ const imageSource='<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="18" fill="red"/></svg>';
+ await page.getByLabel("Adicionar imagem",{exact:true}).setInputFiles({name:"marca.svg",mimeType:"image/svg+xml",buffer:Buffer.from(imageSource)});
+ await page.getByText("Imagem adicionada.",{exact:true}).waitFor();
+ const mixedDownload=page.waitForEvent("download");
+ await page.getByRole("button",{name:"Exportar PDF",exact:true}).click();
+ await (await mixedDownload).saveAs("node_modules/.cache/printing-tests/mixed.pdf");
+ assert.match((await readFile("node_modules/.cache/printing-tests/mixed.pdf")).toString("latin1"),/\/Subtype \/Image/);
+ await page.getByLabel("Papel pré-impresso",{exact:true}).check();
+ assert.equal(await page.locator(".editor-stage image").count(),0);
+ assert.equal(await page.locator('.editor-stage [data-element="title"]').count(),0);
+ assert.equal(await page.locator('.editor-stage [data-element="price"]').count(),1);
+ await page.context().addInitScript(() => {window.print=()=>{window.__printRequested=true;};});
+ const popupPromise=page.waitForEvent("popup");
+ await page.getByRole("button",{name:"Imprimir",exact:true}).click();
+ const popup=await popupPromise;
+ await popup.waitForFunction(()=>window.__printRequested===true);
+ assert.equal(await popup.locator("svg text").count(),0);
+ assert.ok((await popup.locator("svg path").count())>0);
+ assert.match(await popup.locator("style").textContent(),/@page.*148mm 105mm/);
+ await popup.close();
+ await page.getByLabel("Preço (R$)").fill("inválido");
+ await page.getByRole("button",{name:"Exportar PDF",exact:true}).click();
+ await page.getByText("Informe um preço válido no formato 6,99.",{exact:true}).waitFor();
+ assert.deepEqual(errors,[]);
+ console.log("PASS: PNG dimensions, PDF A2–A6 dimensions, vector output, landscape, preprinted mode and validation.");
+}finally{await browser.close();await new Promise(r=>server.httpServer.close(r));}

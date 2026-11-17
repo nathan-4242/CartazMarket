@@ -2,3 +2,5 @@ packages:
   - apps/*
 allowBuilds:
   esbuild: true
+  core-js: false
+storeDir: G:/CARTAZMARKET/.pnpm-store

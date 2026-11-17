@@ -1,13 +1,13 @@
 # CartazMarket
 
-Base do backend do piloto CartazMarket. O foco desta etapa é receber uma planilha autorizada, validar tudo antes da publicação e manter histórico de preços sem escrever no ERP.
+Aplicação web e backend do piloto CartazMarket. O foco do backend é receber uma planilha autorizada, validar tudo antes da publicação e manter histórico de preços sem escrever no ERP.
 
 Se você está desenvolvendo o frontend, comece pelo [handoff do backend](docs/HANDOFF_FRONTEND.md). O trabalho pendente está organizado nos [issues do GitHub](https://github.com/nathan-4242/CartazMarket/issues).
 
 ## Arquitetura
 
 ```text
-Aplicação web (em desenvolvimento)
+Frontend React em `apps/web`
   └── Supabase Auth emite token de usuário
         └── API Fastify valida o token via JWKS e confere associação/loja
               └── PostgreSQL próprio guarda catálogo, preços e histórico
@@ -18,6 +18,8 @@ ERP da rede ── exportação CSV autorizada ──> API (staging → publica�
 O backend é um monólito modular em TypeScript: simples de operar no piloto, com limites claros entre autenticação, importação, catálogo, promoções e cartazes. O ERP continua como fonte oficial e é somente leitura nesta fase. A API nunca recebe senha ou acesso direto ao banco do ERP.
 
 ## O que já está implementado
+
+- Aplicação web em `apps/web` com editor, impressão A2–A6, PNG/PDF, autenticação Supabase, busca de produtos, promoções e cartazes. O progresso e as pendências estão em `docs/FRONTEND_PHASE_1.md` a `docs/FRONTEND_PHASE_4.md`.
 
 - Health checks em `/health` e `/ready`.
 - Validação de tokens Supabase Auth usando JWKS (sem chave de serviço no cliente).
@@ -122,7 +124,7 @@ Arquivos em `apps/api/migrations` são imutáveis depois de aplicados. O comando
 
 ## O que falta para o piloto virar uma operação utilizável
 
-- **Aplicação web:** telas para entrar, escolher loja, pesquisar produtos, criar promoções, preparar/imprimir cartazes e acompanhar alertas e históricos. O backend já expõe as rotas principais; o front ainda precisa consumi-las.
+- **Frontend conectado:** inclui login, busca de produtos, criação/cancelamento de promoções e cartazes ligados aos contratos disponíveis. Consulte `docs/FRONTEND_PHASE_4.md` para pendências como provisionamento da loja, desenho salvo localmente e telas de alertas/retirada.
 - **Provisionamento de acesso:** definir como a rede autoriza usuários, lojas e papéis. Isso exige validar o processo com o responsável da rede; não deve haver cadastro aberto que conceda acesso a uma loja.
 - **Entrada real do catálogo:** obter um CSV de exemplo autorizado e mapear seus cabeçalhos, códigos, unidades e regras de preço. A conexão direta ao ERP só deve ser planejada depois de conhecer o fornecedor e as opções oficiais de integração.
 - **Impressão física:** validar o HTML de impressão no navegador, ajustar dimensões e margens ao papel real e confirmar o fluxo com a impressora. Para imprimir sem diálogo ou receber status/falha, será necessário um agente local ou SDK/protocolo compatível com o modelo escolhido.
