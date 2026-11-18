@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "packageManager": "pnpm@11.25.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.15.0"
   },
   "scripts": {
     "dev": "corepack pnpm --filter @cartazmarket/api dev",

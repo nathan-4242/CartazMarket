@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: CartazMarket API
   version: 0.1.0
-  description: API piloto para importar catálogo, gerenciar promoções e acompanhar cartazes por loja.
+  description: API piloto para importar catálogo, gerenciar promoções, cartazes e vencimentos por lote. Rotas autenticadas também podem retornar 503 AUTH_VALIDATION_UNAVAILABLE quando o serviço JWKS do Supabase estiver temporariamente indisponível.
 servers:
   - url: http://127.0.0.1:3000
     description: Desenvolvimento local
@@ -12,6 +12,7 @@ tags:
   - name: Catalog
   - name: Promotions
   - name: Labels
+  - name: Expiry
 paths:
   /health:
     get:
@@ -60,6 +61,7 @@ paths:
                     items: { $ref: '#/components/schemas/OrganizationMembership' }
                 required: [user, organizations]
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/AuthValidationUnavailable' }
   /v1/stores/{storeId}/imports/products:
     post:
       tags: [Catalog]
@@ -85,6 +87,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ImportResult' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/AuthValidationUnavailable' }
         '404': { $ref: '#/components/responses/NotFound' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
         '422': { $ref: '#/components/responses/InvalidCsv' }
@@ -130,6 +133,10 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/StoreId'
+        - name: syncRunId
+          in: query
+          description: Restringe as alterações à importação que acabou de ser publicada
+          schema: { type: string, format: uuid }
         - name: productId
           in: query
           schema: { type: string, format: uuid }
@@ -506,12 +513,142 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /v1/stores/{storeId}/expiry-lots:
+    get:
+      tags: [Expiry]
+      operationId: listProductExpiryLots
+      summary: Lista lotes e respectivas datas de vencimento
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, closed] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+      responses:
+        '200':
+          description: Lotes ordenados pelo vencimento
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lots: { type: array, items: { $ref: '#/components/schemas/ExpiryLot' } }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                required: [lots, limit, offset]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Expiry]
+      operationId: createProductExpiryLot
+      summary: Registra um lote e sua data de vencimento
+      description: Exige papel owner ou manager. A quantidade restante é opcional e manual; não é sincronizada com estoque do ERP.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateExpiryLot' }
+      responses:
+        '201': { description: Lote registrado }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/stores/{storeId}/expiry-lots/{lotId}/review:
+    post:
+      tags: [Expiry]
+      operationId: reviewProductExpiryLot
+      summary: Registra a conferência e decisão do gerente
+      description: Ações sold_out e removed encerram o lote. A ação discount registra a decisão, mas a promoção é cadastrada separadamente.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: lotId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewExpiryLot' }
+      responses:
+        '200': { description: Conferência registrada e alertas existentes resolvidos }
+        '400': { $ref: '#/components/responses/InvalidRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/stores/{storeId}/expiry-alerts:
+    get:
+      tags: [Expiry]
+      operationId: listProductExpiryAlerts
+      summary: Lista alertas de vencimento de produtos
+      description: Alertas persistentes são registrados em segundo plano considerando o fuso da loja: 30 dias, 7 dias ou no dia do vencimento.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: status
+          in: query
+          schema: { type: string, enum: [unread, read, resolved] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+      responses:
+        '200':
+          description: Alertas mais recentes primeiro
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts: { type: array, items: { $ref: '#/components/schemas/ExpiryAlert' } }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                required: [alerts, limit, offset]
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/stores/{storeId}/expiry-alerts/{alertId}/read:
+    post:
+      tags: [Expiry]
+      operationId: markProductExpiryAlertRead
+      summary: Marca alerta de vencimento como lido
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StoreId'
+        - name: alertId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Alerta marcado como lido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: Todas as operações protegidas podem retornar 503 AUTH_VALIDATION_UNAVAILABLE quando a consulta das chaves JWKS do Supabase falhar temporariamente.
   parameters:
     StoreId:
       name: storeId
@@ -519,6 +656,11 @@ components:
       required: true
       schema: { type: string, format: uuid }
   responses:
+    AuthValidationUnavailable:
+      description: Não foi possível consultar ou validar as chaves públicas do Supabase Auth; tente novamente sem encerrar a sessão local.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     Unauthorized:
       description: Token ausente, inválido ou expirado
       content:
@@ -635,6 +777,56 @@ components:
         readBy: { type: [string, 'null'], format: uuid }
         resolvedAt: { type: [string, 'null'], format: date-time }
       required: [id, type, status, labelId, productId, productName, displayAmount, removalDueAt, createdAt]
+    CreateExpiryLot:
+      type: object
+      properties:
+        productId: { type: string, format: uuid }
+        lotCode: { type: string, maxLength: 100 }
+        expiresOn: { type: string, format: date }
+        remainingQuantity: { type: [string, 'null'], pattern: '^(?:0|[1-9]\d{0,8})(?:\.\d{1,3})?$' }
+      required: [productId, expiresOn]
+    ReviewExpiryLot:
+      type: object
+      properties:
+        action: { type: string, enum: [no_change, discount, sold_out, removed] }
+        remainingQuantity: { type: [string, 'null'], pattern: '^(?:0|[1-9]\d{0,8})(?:\.\d{1,3})?$' }
+        note: { type: string, maxLength: 500 }
+      required: [action]
+    ExpiryLot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        productName: { type: string }
+        unit: { type: string }
+        lotCode: { type: [string, 'null'] }
+        expiresOn: { type: string, format: date }
+        remainingQuantity: { type: [string, 'null'] }
+        status: { type: string, enum: [active, closed] }
+        lastReviewAction: { type: [string, 'null'], enum: [no_change, discount, sold_out, removed, null] }
+        lastReviewNote: { type: [string, 'null'] }
+        lastReviewedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        daysUntilExpiry: { type: integer }
+      required: [id, productId, productName, unit, expiresOn, remainingQuantity, status, createdAt, updatedAt, daysUntilExpiry]
+    ExpiryAlert:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [30_day, 7_day, expiry_day] }
+        status: { type: string, enum: [unread, read, resolved] }
+        lotId: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        productName: { type: string }
+        lotCode: { type: [string, 'null'] }
+        expiresOn: { type: string, format: date }
+        remainingQuantity: { type: [string, 'null'] }
+        unit: { type: string }
+        createdAt: { type: string, format: date-time }
+        readAt: { type: [string, 'null'], format: date-time }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+      required: [id, type, status, lotId, productId, productName, expiresOn, remainingQuantity, unit, createdAt]
     StoreProduct:
       type: object
       properties:

@@ -14,6 +14,7 @@ Permitir que uma loja importe o catálogo e os preços por CSV, agende promoçõ
 - PostgreSQL local pelo Docker Compose; migrations em `apps/api/migrations`.
 - Comandos na raiz: `corepack pnpm install`, `corepack pnpm db:migrate`, `corepack pnpm dev`.
 - O token de sessão é do Supabase Auth. Enviar `Authorization: Bearer <access_token>` nas rotas `/v1`.
+- `401` indica token ausente, inválido ou expirado; a interface pode encerrar a sessão local nesses casos. `503 AUTH_VALIDATION_UNAVAILABLE` indica falha temporária ao consultar as chaves JWKS do Supabase: mostrar a mensagem de indisponibilidade e preservar a sessão para uma nova tentativa.
 - A API confere se o usuário autenticado pertence à organização da loja. Não colocar chave Supabase secreta no frontend.
 
 ## Fluxo sugerido de telas
@@ -21,10 +22,11 @@ Permitir que uma loja importe o catálogo e os preços por CSV, agende promoçõ
 1. Entrar com Supabase Auth.
 2. Consultar `GET /v1/me` e selecionar uma loja autorizada. Hoje `/v1/me` retorna organizações, não a lista de lojas; a associação loja/organização usada no piloto é configurada no banco.
 3. Pesquisar produtos pelo nome e consultar preço atual.
-4. Criar uma promoção, ou escolher uma promoção existente.
-5. Gerar um cartaz para o produto e conferir a prévia.
-6. Imprimir um cartaz ou um lote no navegador; registrar a impressão depois que a pessoa confirmar o resultado.
-7. Acompanhar promoções, histórico, alertas e cartazes pendentes de retirada.
+4. Com perfil `owner`/`manager`, atualizar preços importando um CSV exportado do ERP. A tela compara a importação com a anterior e mostra reduções; produtos novos sem preço anterior não entram como redução.
+5. Selecionar até 50 produtos reduzidos para criar cartazes e abrir a impressão em lote. Confirmar a impressão só depois de fechar a caixa de impressão do navegador.
+6. Criar uma promoção, ou escolher uma promoção existente.
+7. Gerar um cartaz individual para o produto e conferir a prévia.
+8. Acompanhar promoções, histórico, alertas e cartazes pendentes de retirada.
 
 ## Rotas disponíveis
 
@@ -38,7 +40,7 @@ Todas as rotas `/v1` abaixo exigem o token Bearer e `storeId` de uma loja autori
 | `POST /v1/stores/{storeId}/imports/products` | Importar CSV (`Content-Type: text/csv`); exige `owner` ou `manager`. Limite 8 MiB / 50 mil produtos. |
 | `GET /v1/stores/{storeId}/products?q=&limit=50&offset=0` | Buscar catálogo e preços atuais. `q` é opcional; limite máximo 100. |
 | `GET /v1/stores/{storeId}/imports?status=&limit=50&offset=0` | Histórico de importações. |
-| `GET /v1/stores/{storeId}/price-changes?productId=&from=&to=&limit=50&offset=0` | Histórico de alteração de preço; datas ISO com fuso. |
+| `GET /v1/stores/{storeId}/price-changes?syncRunId=&productId=&from=&to=&limit=50&offset=0` | Histórico de alteração de preço; `syncRunId` filtra as mudanças daquela importação; datas ISO com fuso. |
 | `GET /v1/stores/{storeId}/promotions?status=&limit=50&offset=0` | Listar promoções; status `scheduled`, `active`, `expired` ou `cancelled`. |
 | `POST /v1/stores/{storeId}/promotions` | Criar promoção; exige `owner`/`manager`. Corpo: `productId`, `promotionalAmount` decimal em texto, `startsAt` e `endsAt` ISO com fuso. |
 | `POST /v1/stores/{storeId}/promotions/{promotionId}/cancel` | Cancelar promoção; exige `owner`/`manager`. Cartazes impressos ficam pendentes de retirada. |
@@ -50,6 +52,11 @@ Todas as rotas `/v1` abaixo exigem o token Bearer e `storeId` de uma loja autori
 | `POST /v1/stores/{storeId}/labels/{labelId}/removed` | Confirmar retirada; resolve os alertas ligados ao cartaz. |
 | `GET /v1/stores/{storeId}/alerts?status=unread&limit=50&offset=0` | Listar alertas `unread`, `read` ou `resolved`. |
 | `POST /v1/stores/{storeId}/alerts/{alertId}/read` | Marcar alerta como lido. |
+| `GET /v1/stores/{storeId}/expiry-lots?status=active&limit=50&offset=0` | Listar lotes ativos ordenados pelo vencimento, com quantidade manual e dias restantes. |
+| `POST /v1/stores/{storeId}/expiry-lots` | Registrar produto, lote (opcional), vencimento e quantidade restante (opcional); exige `owner`/`manager`. |
+| `GET /v1/stores/{storeId}/expiry-alerts?status=unread&limit=50&offset=0` | Consultar lembretes persistentes de vencimento (30 dias, 7 dias, vencido). |
+| `POST /v1/stores/{storeId}/expiry-alerts/{alertId}/read` | Marcar lembrete de vencimento como lido. |
+| `POST /v1/stores/{storeId}/expiry-lots/{lotId}/review` | Registrar conferência/decisão e quantidade atual; `sold_out`/`removed` encerram o lote. Exige `owner`/`manager`. |
 
 ## Integração com impressão no navegador
 
@@ -66,13 +73,15 @@ Ainda não existe envio silencioso à fila, detecção de impressora, status de 
 - Se uma nova importação fizer o preço atual ultrapassar o valor promocional, a criação do cartaz é recusada com `409 PROMOTION_PRICE_OUTDATED`; o gerente deve revisar a promoção.
 - Cancelar uma promoção cancela cartazes ainda não impressos e deixa os já impressos imediatamente pendentes de retirada.
 - A API cria alerta persistente até 15 segundos após o vencimento de um cartaz impresso. A retirada confirmada resolve o alerta.
+- A API cria alertas persistentes de vencimento por lote com base na data civil do fuso da loja. A quantidade restante é opcional e manual; o recurso não sincroniza estoque com ERP.
 - `owner`/`manager` podem importar catálogo e criar/cancelar promoção. Membros autorizados da organização podem consultar catálogo e operar cartazes/alertas.
+- A atualização por CSV substitui apenas os preços presentes no arquivo e registra as diferenças. Ainda não consulta o ERP automaticamente; a redução é comparada com o preço imediatamente anterior àquela importação.
 - Valores monetários vêm como strings decimais; não usar ponto flutuante para editar/preencher valores.
 - Paginação: enviar `limit`/`offset` nas listas maiores; máximo 100 itens por página.
 
 ## O que ainda não está no backend
 
-- O frontend ainda precisa ser criado/conectado a essas rotas.
+- Criar as telas do frontend para cadastrar/acompanhar lotes, consultar alertas de vencimento e registrar a revisão do gerente.
 - A lista de lojas do usuário e gestão de membros ainda não têm endpoints/tela; o provisionamento precisa ser autorizado pela rede.
 - O CSV foi feito para o piloto genérico; falta receber uma exportação real autorizada e ajustar o mapeamento ao ERP.
 - O HTML de impressão é genérico. Faltam confirmar dimensões, margens, identidade visual e papel com a loja.

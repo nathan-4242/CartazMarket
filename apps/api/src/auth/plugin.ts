@@ -11,8 +11,26 @@ import { labelRoutes } from "../labels/routes.js";
 import { promotionRoutes } from "../promotions/routes.js";
 import { historyRoutes } from "../routes/history.js";
 import { alertRoutes } from "../routes/alerts.js";
+import { expiryRoutes } from "../expiry/routes.js";
 
 const userIdSchema = z.uuid();
+
+function errorCode(error: unknown): string | undefined {
+  if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
+    return error.code;
+  }
+  return undefined;
+}
+
+function causeCode(error: unknown): string | undefined {
+  return error instanceof Error ? errorCode(error.cause) : undefined;
+}
+
+function isJwksUnavailable(error: unknown): boolean {
+  if (error instanceof TypeError && error.message === "fetch failed" && error.cause) return true;
+  return ["ERR_JOSE_GENERIC", "ERR_JWKS_INVALID", "ERR_JWKS_TIMEOUT"].includes(errorCode(error) ?? "");
+}
+
 const supabaseUrl = env.SUPABASE_URL ? new URL(env.SUPABASE_URL) : null;
 const issuer = supabaseUrl ? new URL("/auth/v1", supabaseUrl).toString().replace(/\/$/, "") : null;
 const jwks = supabaseUrl
@@ -65,7 +83,21 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
         userId: userId.data,
         email: typeof payload.email === "string" ? payload.email : null,
       };
-    } catch {
+    } catch (error) {
+      const logDetails = {
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorCode: errorCode(error),
+        causeCode: causeCode(error),
+      };
+      if (isJwksUnavailable(error)) {
+        request.log.error(logDetails, "Supabase JWKS could not be fetched or validated");
+        return reply.code(503).send({
+          error: "AUTH_VALIDATION_UNAVAILABLE",
+          message: "A validação da sessão está temporariamente indisponível. Tente novamente em instantes.",
+          requestId: request.id,
+        });
+      }
+      request.log.warn(logDetails, "Supabase access token rejected");
       return reply.code(401).send({
         error: "INVALID_TOKEN",
         message: "O token é inválido ou expirou.",
@@ -102,4 +134,5 @@ export const authPlugin: FastifyPluginAsync = async (app) => {
   app.register(labelRoutes);
   app.register(historyRoutes);
   app.register(alertRoutes);
+  app.register(expiryRoutes);
 };

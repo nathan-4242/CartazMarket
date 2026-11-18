@@ -14,6 +14,7 @@ const runQuerySchema = z.object({
 const priceHistoryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).max(10_000).default(0),
+  syncRunId: z.uuid().optional(),
   productId: z.uuid().optional(),
   from: z.iso.datetime({ offset: true }).optional(),
   to: z.iso.datetime({ offset: true }).optional(),
@@ -66,7 +67,7 @@ export const historyRoutes: FastifyPluginAsync = async (app) => {
 
   app.get<{
     Params: { storeId: string };
-    Querystring: { limit?: string; offset?: string; productId?: string; from?: string; to?: string };
+    Querystring: { limit?: string; offset?: string; syncRunId?: string; productId?: string; from?: string; to?: string };
   }>("/v1/stores/:storeId/price-changes", { preHandler: app.authenticate }, async (request, reply) => {
     const identity = request.identity;
     if (!identity) {
@@ -92,6 +93,7 @@ export const historyRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const filters = [eq(priceChangeEvents.storeId, access.storeId)];
+    if (parsedQuery.data.syncRunId) filters.push(eq(priceChangeEvents.syncRunId, parsedQuery.data.syncRunId));
     if (parsedQuery.data.productId) filters.push(eq(priceChangeEvents.productId, parsedQuery.data.productId));
     if (parsedQuery.data.from) filters.push(gte(priceChangeEvents.occurredAt, new Date(parsedQuery.data.from)));
     if (parsedQuery.data.to) filters.push(lte(priceChangeEvents.occurredAt, new Date(parsedQuery.data.to)));

@@ -23,11 +23,20 @@ export const identitySchema = z.object({
 export const sourceSchema = z.object({
   storeId:z.string().uuid(),userId:z.string().uuid(),labelId:z.string().uuid(),productId:z.string().uuid(),
 });
+export const importResultSchema = z.object({
+  syncRunId:z.string().uuid(),status:z.literal("applied"),rowsImported:z.number().int(),
+  productsCreated:z.number().int(),pricesChanged:z.number().int(),
+});
+export const priceChangeSchema = z.object({
+  id:z.string().uuid(),productId:z.string().uuid(),productName:z.string(),syncRunId:z.string().uuid(),
+  oldAmount:money.nullable(),newAmount:money,occurredAt:z.string(),
+});
 export type Product = z.infer<typeof productSchema>;
 export type Promotion = z.infer<typeof promotionSchema>;
 export type Label = z.infer<typeof labelSchema>;
 export type Identity = z.infer<typeof identitySchema>;
 export type Source = z.infer<typeof sourceSchema>;
+export type PriceChange = z.infer<typeof priceChangeSchema>;
 
 export function decimalToBrazilian(value: string) {
   const [whole,fraction=""] = money.parse(value).split(".");

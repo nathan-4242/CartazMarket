@@ -29,6 +29,38 @@ async function createAndResolveDueAlerts(): Promise<void> {
         and label.status = 'removed'
         and alert.status <> 'resolved'
     `);
+
+    await tx.execute(sql`
+      insert into product_expiry_alerts (organization_id, store_id, lot_id, alert_type, status)
+      select lot.organization_id,
+             lot.store_id,
+             lot.id,
+             case
+               when lot.expires_on <= (now() at time zone store.time_zone)::date then 'expiry_day'
+               when lot.expires_on <= (now() at time zone store.time_zone)::date + 7 then '7_day'
+               else '30_day'
+             end,
+             'unread'
+      from product_expiry_lots as lot
+      inner join stores as store
+        on store.id = lot.store_id
+       and store.organization_id = lot.organization_id
+      where lot.status = 'active'
+        and lot.expires_on <= (now() at time zone store.time_zone)::date + 30
+      on conflict (lot_id, alert_type) do nothing
+    `);
+
+    await tx.execute(sql`
+      update product_expiry_alerts as alert
+      set status = 'resolved',
+          resolved_at = coalesce(alert.resolved_at, now())
+      from product_expiry_lots as lot
+      where lot.id = alert.lot_id
+        and lot.organization_id = alert.organization_id
+        and lot.store_id = alert.store_id
+        and lot.status = 'closed'
+        and alert.status <> 'resolved'
+    `);
   });
 }
 

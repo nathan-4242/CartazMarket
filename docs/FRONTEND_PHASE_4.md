@@ -4,7 +4,7 @@ O frontend React foi adicionado ao monorepo existente. As rotas operacionais usa
 
 ## Iniciar localmente
 
-1. Requer Node.js 22 ou superior, Corepack, PostgreSQL 17 ou Docker Desktop.
+1. Requer Node.js 22.15 ou superior, Corepack, PostgreSQL 17 ou Docker Desktop.
 2. Copie `.env.example` da raiz para `.env`, configure `DATABASE_URL` e `SUPABASE_URL`, suba PostgreSQL, aplique migrations e inicie a API conforme o README.
 3. Copie `apps/web/.env.example` para `apps/web/.env.local`.
 4. Preencha `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` e `VITE_API_BASE_URL`. Use apenas a chave publicável `sb_publishable_...`. Nunca use `sb_secret_...` nem `service_role` no navegador.

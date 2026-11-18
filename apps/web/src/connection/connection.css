@@ -28,4 +28,23 @@
 .remote-label p { font-size:12px; }
 .remote-label button { margin-left:auto; }
 .remote-label span { flex-basis:100%; font-size:13px; }
+.price-sync-panel { border:1px solid var(--border); border-radius:12px; background:white; padding:18px; margin:18px 0 24px; }
+.price-sync-heading,.price-drop-toolbar,.print-confirm { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.price-sync-heading { flex-wrap:wrap; }
+.price-sync-heading h2 { margin:0 0 4px; font-size:18px; }
+.price-sync-heading p,.price-drop-toolbar,.print-confirm { font-size:13px; }
+.price-drop-toolbar { margin:16px 0 8px; }
+.price-drop-list { border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.price-drop-row { display:grid!important; grid-template-columns:24px minmax(0,1fr) auto; gap:12px!important; align-items:center; padding:12px; border-top:1px solid var(--border); cursor:pointer; }
+.price-drop-row:first-child { border-top:0; }
+.connected-page .price-drop-row input[type="checkbox"] { width:18px; min-height:18px; margin:0; }
+.price-drop-row span { display:grid; gap:4px; }
+.price-drop-row small { color:#64748b; font-weight:400; }
+.price-drop-row small b { color:#087443; }
+.price-drop-delta { color:#087443; font-size:13px; white-space:nowrap; }
+.price-sync-panel .form-actions { align-items:center; margin-top:14px; }
+.price-sync-panel .connection-empty { margin:14px 0 0; padding:16px; }
+.print-confirm { margin-top:16px; padding:12px; border-radius:8px; background:#f0fdf4; color:#166534; }
+.visually-hidden { position:absolute!important; width:1px!important; height:1px!important; padding:0!important; margin:-1px!important; overflow:hidden!important; clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important; }
 @media(max-width:620px){.account-summary{padding-top:12px;}.data-toolbar{flex-wrap:wrap;}}
+@media(max-width:620px){.price-drop-toolbar{align-items:flex-start;flex-direction:column;}.price-drop-row{grid-template-columns:24px minmax(0,1fr)!important;}.price-drop-delta{grid-column:2;}}

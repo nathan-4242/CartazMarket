@@ -7,6 +7,7 @@ export async function findStoreAccess(storeId: string, userId: string) {
     .select({
       storeId: stores.id,
       organizationId: stores.organizationId,
+      timeZone: stores.timeZone,
       role: organizationMemberships.role,
     })
     .from(stores)

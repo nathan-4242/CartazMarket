@@ -1,5 +1,6 @@
 import {
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -346,5 +347,81 @@ export const storeAlerts = pgTable(
     }).onDelete("cascade"),
     uniqueIndex("store_alerts_label_type_uidx").on(table.alertType, table.labelId),
     index("store_alerts_store_status_created_idx").on(table.storeId, table.status, table.createdAt),
+  ],
+);
+
+export const productExpiryLots = pgTable(
+  "product_expiry_lots",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull(),
+    storeId: uuid("store_id").notNull(),
+    productId: uuid("product_id").notNull(),
+    lotCode: text("lot_code"),
+    expiresOn: date("expires_on", { mode: "string" }).notNull(),
+    remainingQuantity: numeric("remaining_quantity", { precision: 12, scale: 3 }),
+    status: varchar("status", { length: 16 }).notNull().default("active"),
+    lastReviewAction: varchar("last_review_action", { length: 24 }),
+    lastReviewNote: text("last_review_note"),
+    lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
+    lastReviewedBy: uuid("last_reviewed_by"),
+    createdBy: uuid("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedBy: uuid("closed_by"),
+  },
+  (table) => [
+    check("product_expiry_lots_quantity_check", sql`${table.remainingQuantity} is null or ${table.remainingQuantity} >= 0`),
+    check("product_expiry_lots_status_check", sql`${table.status} in ('active', 'closed')`),
+    check("product_expiry_lots_review_action_check", sql`${table.lastReviewAction} is null or ${table.lastReviewAction} in ('no_change', 'discount', 'sold_out', 'removed')`),
+    check("product_expiry_lots_closed_timestamp_check", sql`${table.status} <> 'closed' or ${table.closedAt} is not null`),
+    foreignKey({
+      columns: [table.organizationId, table.storeId],
+      foreignColumns: [stores.organizationId, stores.id],
+      name: "product_expiry_lots_store_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.organizationId, table.productId],
+      foreignColumns: [products.organizationId, products.id],
+      name: "product_expiry_lots_product_fk",
+    }).onDelete("cascade"),
+    uniqueIndex("product_expiry_lots_organization_store_id_uidx").on(table.organizationId, table.storeId, table.id),
+    index("product_expiry_lots_store_expiry_idx").on(table.storeId, table.expiresOn).where(sql`${table.status} = 'active'`),
+  ],
+);
+
+export const productExpiryAlerts = pgTable(
+  "product_expiry_alerts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id").notNull(),
+    storeId: uuid("store_id").notNull(),
+    lotId: uuid("lot_id").notNull(),
+    alertType: varchar("alert_type", { length: 16 }).notNull(),
+    status: varchar("status", { length: 24 }).notNull().default("unread"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    readBy: uuid("read_by"),
+    resolvedBy: uuid("resolved_by"),
+  },
+  (table) => [
+    check("product_expiry_alerts_type_check", sql`${table.alertType} in ('30_day', '7_day', 'expiry_day')`),
+    check("product_expiry_alerts_status_check", sql`${table.status} in ('unread', 'read', 'resolved')`),
+    check("product_expiry_alerts_read_timestamp_check", sql`${table.status} <> 'read' or ${table.readAt} is not null`),
+    check("product_expiry_alerts_resolved_timestamp_check", sql`${table.status} <> 'resolved' or ${table.resolvedAt} is not null`),
+    foreignKey({
+      columns: [table.organizationId, table.storeId],
+      foreignColumns: [stores.organizationId, stores.id],
+      name: "product_expiry_alerts_store_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.organizationId, table.storeId, table.lotId],
+      foreignColumns: [productExpiryLots.organizationId, productExpiryLots.storeId, productExpiryLots.id],
+      name: "product_expiry_alerts_lot_fk",
+    }).onDelete("cascade"),
+    uniqueIndex("product_expiry_alerts_lot_type_uidx").on(table.lotId, table.alertType),
+    index("product_expiry_alerts_store_status_created_idx").on(table.storeId, table.status, table.createdAt),
   ],
 );

@@ -37,7 +37,7 @@ O backend é um monólito modular em TypeScript: simples de operar no piloto, co
 
 ## Requisitos
 
-- Node.js 22 ou superior
+- Node.js 22.15 ou superior
 - Corepack (para usar a versão de pnpm declarada pelo projeto)
 - Docker Desktop ou uma instância PostgreSQL 17 acessível
 
@@ -50,6 +50,8 @@ O backend é um monólito modular em TypeScript: simples de operar no piloto, co
 5. Ajuste `CORS_ORIGINS` para a origem do frontend (por padrão, `http://localhost:5173` e `http://127.0.0.1:5173` em desenvolvimento).
 6. Aplique as migrations com `corepack pnpm db:migrate`.
 7. Inicie a API em desenvolvimento com `corepack pnpm dev`.
+
+Os comandos `dev` e `start` iniciam a API com `--use-system-ca`. Isso permite ao Node validar HTTPS usando também as autoridades certificadoras confiáveis do sistema operacional, necessário em máquinas cujo tráfego HTTPS passa por um certificado local confiável. A verificação TLS permanece ativa.
 
 `GET http://127.0.0.1:3000/health` verifica se o processo está ativo. `GET http://127.0.0.1:3000/ready` verifica se o banco está acessível.
 
@@ -91,8 +93,12 @@ Todas as rotas abaixo exigem `Authorization: Bearer {token-de-acesso}` e recebem
 - `GET /v1/stores/{storeId}/labels/print-batch?labelIds={id1},{id2}&widthMm=100&heightMm=70` prepara até 50 cartazes pendentes, um por página. A API rejeita o lote inteiro se algum cartaz não pertencer à loja ou já não estiver pendente.
 - `GET /v1/stores/{storeId}/labels?removalDueOnly=true` lista cartazes impressos que precisam ser retirados; `POST /v1/stores/{storeId}/labels/{labelId}/removed` confirma a retirada.
 - `GET /v1/stores/{storeId}/alerts?status=unread` lista alertas automáticos de retirada; `POST /v1/stores/{storeId}/alerts/{alertId}/read` marca um alerta como lido.
+- `POST /v1/stores/{storeId}/expiry-lots` registra lote, vencimento e quantidade restante opcional; exige `owner`/`manager`.
+- `GET /v1/stores/{storeId}/expiry-lots?status=active` lista lotes por data de vencimento, quantidade informada, unidade e último acompanhamento.
+- `GET /v1/stores/{storeId}/expiry-alerts?status=unread` lista lembretes persistentes de 30 dias, 7 dias e no dia do vencimento; `POST /v1/stores/{storeId}/expiry-alerts/{alertId}/read` marca o aviso como lido.
+- `POST /v1/stores/{storeId}/expiry-lots/{lotId}/review` registra a conferência da gerência (`no_change`, `discount`, `sold_out` ou `removed`), quantidade atual opcional e observação. `sold_out` e `removed` encerram o lote.
 
-Um processo em segundo plano varre cartazes impressos a cada 15 segundos e grava um alerta persistente quando a vigência termina. O frontend pode consultar a lista de alertas; não há envio por WhatsApp, e-mail ou notificação do navegador nesta etapa. A API gera a página de impressão e guarda a confirmação manual. A seleção da impressora acontece no navegador/dispositivo; envio sem diálogo e consulta de status exigirão um agente local ou integração compatível com o equipamento escolhido.
+Um processo em segundo plano varre cartazes impressos e lotes próximos do vencimento a cada 15 segundos e grava alertas persistentes considerando o fuso da loja. Para lotes, o alerta mais urgente é registrado: 30 dias, 7 dias ou no dia do vencimento. O frontend pode consultar as listas; ainda não há envio por WhatsApp, e-mail ou notificação do navegador, nem tela de acompanhamento de lotes. A quantidade restante é manual e não substitui o estoque do RP. A API gera a página de impressão e guarda a confirmação manual. A seleção da impressora acontece no navegador/dispositivo; envio sem diálogo e consulta de status exigirão um agente local ou integração compatível com o equipamento escolhido.
 
 Para validar o fluxo real sem interface, mantenha `corepack pnpm dev` aberto em um terminal e, em outro, rode `./apps/api/scripts/smoke-promotion-workflow.ps1`. O script pede a chave publicável e as credenciais localmente, sem salvar ou exibir a senha/token. Ele valida importação, consultas de histórico, catálogo, criação/conflito de promoção, snapshot de cartaz, impressão, geração automática de alerta, leitura, retirada e resolução do alerta. O teste deixa os registros de promoção/cartaz cancelados/retirados e o produto de fixture no banco local.
 

@@ -95,6 +95,6 @@ export function Settings(){
       </>}
       <button className="tool-button" onClick={()=>void supabase?.auth.signOut({scope:"local"})}>Sair da conta</button>
     </section>}
-    <p className="connection-footnote">A sessão permanece apenas nesta janela. Ao recarregar, entre novamente. Os rascunhos locais continuam neste navegador.</p>
+    <p className="connection-footnote">A sessão permanece nesta aba até ela ser fechada. Os rascunhos locais continuam neste navegador.</p>
   </main></>;
 }
