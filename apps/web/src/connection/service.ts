@@ -2,6 +2,8 @@ import { z } from "zod";
 import { apiBase, supabase } from "./config";
 import { identitySchema, productSchema, promotionSchema, labelSchema, labelCoreSchema, importResultSchema, priceChangeSchema } from "./contracts";
 
+import { importRunSchema, removalAlertSchema } from "./historyContracts";
+
 export class ApiError extends Error {
   constructor(message:string,public status:number,public code:string,public requestId?:string){super(message);}
 }
@@ -69,7 +71,17 @@ export const service={
   promotions:(storeId:string,status:string,offset:number,signal?:AbortSignal)=>json(storePath(storeId)+"/promotions"+query({...(status?{status}:{}),limit:pageSize,offset}),z.object({promotions:z.array(promotionSchema),limit:z.number(),offset:z.number()}),signal?{signal}:{}),
   createPromotion:(storeId:string,body:{productId:string;promotionalAmount:string;startsAt:string;endsAt:string})=>json(storePath(storeId)+"/promotions",z.object({promotion:z.object({id:z.string().uuid()})}),{method:"POST",body:JSON.stringify(body)}),
   cancelPromotion:(storeId:string,id:string)=>json(storePath(storeId)+"/promotions/"+encodeURIComponent(id)+"/cancel",z.object({status:z.literal("cancelled")}),{method:"POST"}),
-  labels:(storeId:string,status:string,offset:number,signal?:AbortSignal)=>json(storePath(storeId)+"/labels"+query({...(status?{status}:{}),limit:pageSize,offset}),z.object({labels:z.array(labelSchema),limit:z.number(),offset:z.number()}),signal?{signal}:{}),
+  labels:(storeId:string,status:string,offset:number,signal?:AbortSignal,removalDueOnly=false)=>json(storePath(storeId)+"/labels"+query({...(removalDueOnly?{removalDueOnly:"true"}:{}),...(status?{status}:{}),limit:pageSize,offset}),z.object({labels:z.array(labelSchema),limit:z.number(),offset:z.number()}),signal?{signal}:{}),
+  alerts: (id:string, filters:Record<string,string>, offset:number, signal:AbortSignal) =>
+    json(storePath(id)+"/alerts"+query({...filters,limit:pageSize,offset}), z.object({alerts:z.array(removalAlertSchema)}), {signal}),
+  imports: (id:string, filters:Record<string,string>, offset:number, signal:AbortSignal) =>
+    json(storePath(id)+"/imports"+query({...filters,limit:pageSize,offset}), z.object({imports:z.array(importRunSchema)}), {signal}),
+  priceHistory: (id:string, filters:Record<string,string>, offset:number, signal:AbortSignal) =>
+    json(storePath(id)+"/price-changes"+query({...filters,limit:pageSize,offset}), z.object({changes:z.array(priceChangeSchema)}), {signal}),
+  readAlert: (id:string, alertId:string) =>
+    request(storePath(id)+"/alerts/"+encodeURIComponent(alertId)+"/read", {method:"POST"}),
+  removed: (id:string, labelId:string) =>
+    request(storePath(id)+"/labels/"+encodeURIComponent(labelId)+"/removed", {method:"POST"}),
   createLabel:(storeId:string,productId:string,promotionId?:string)=>json(storePath(storeId)+"/labels",z.object({label:labelCoreSchema,productName:z.string(),unit:z.string()}),{method:"POST",body:JSON.stringify({productId,...(promotionId?{promotionId}:{})})}),
   validatePrint:(storeId:string,labelId:string)=>request(storePath(storeId)+"/labels/"+encodeURIComponent(labelId)+"/print?widthMm=100&heightMm=70",{},true),
   printed:(storeId:string,labelId:string)=>json(storePath(storeId)+"/labels/"+encodeURIComponent(labelId)+"/printed",z.object({label:z.object({id:z.string().uuid(),status:z.literal("printed")})}),{method:"POST"}),
