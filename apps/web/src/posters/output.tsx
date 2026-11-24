@@ -129,7 +129,7 @@ export async function printPoster(draft: Draft, target: Window) {
     const {width,height}=pageDimensions(draft.print);
     target.document.title="Imprimir cartaz";
     const style=target.document.createElement("style");
-    style.textContent="@page{size:"+width+"mm "+height+"mm;margin:0}html,body{margin:0;padding:0}svg{display:block;width:"+width+"mm;height:"+height+"mm}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}";
+    style.textContent="@page{size:"+width+"mm "+height+"mm;margin:0}html,body{margin:0;padding:0}body>svg{display:block;width:"+width+"mm;height:"+height+"mm}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}";
     target.document.head.append(style);
     target.document.body.replaceChildren(target.document.importNode(svg,true));
     await Promise.all([...target.document.images].map((image)=>image.decode()));
