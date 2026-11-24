@@ -15,19 +15,21 @@ export function RemoteLabel({source}:{source:Source}){
   const {session}=useConnection();
   const queryClient=useQueryClient();
   const [busy,setBusy]=useState(false);
+  const [confirmed,setConfirmed]=useState(false);
   const [message,setMessage]=useState("");
   return <section className="remote-label">
     <div><strong>Cartaz registrado na loja</strong><p>Registro {source.labelId}. Produto, preço e validade seguem o registro do servidor. O desenho é salvo neste navegador.</p></div>
-    {session?.user.id===source.userId?<button className="tool-button" type="button" disabled={busy} onClick={async()=>{
+    {session?.user.id===source.userId?<button className="tool-button" type="button" disabled={busy||confirmed} onClick={async()=>{
       if(!window.confirm("Confirma que este cartaz foi impresso com sucesso?"))return;
       setBusy(true);setMessage("");
       try{
         await service.printed(source.storeId,source.labelId);
         await queryClient.invalidateQueries({queryKey:["store",source.userId,source.storeId,"labels"]});
+        setConfirmed(true);
         setMessage("Impressão confirmada no servidor.");
       }catch(error){setMessage(error instanceof Error?error.message:"Não foi possível confirmar.");}
       finally{setBusy(false);}
-    }}>Confirmar impressão</button>:<Link className="button" to="/configuracoes">Entrar para validar</Link>}
+    }}>{confirmed?"Impressão registrada":"Confirmar impressão"}</button>:<Link className="button" to="/configuracoes">Entrar para validar</Link>}
     {message&&<span role="status">{message}</span>}
   </section>;
 }

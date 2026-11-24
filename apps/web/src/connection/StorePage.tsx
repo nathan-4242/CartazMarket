@@ -73,7 +73,7 @@ function StoreData({section}:{section:Section}){
     queryFn:({signal})=>{
       if(section==="products")return service.products(id,query,offset,signal);
       if(section==="promotions")return service.promotions(id,status,offset,signal);
-      return service.labels(id,status,offset,signal);
+      return service.labels(id,status==="due"?"":status,offset,signal,status==="due");
     },
     retry:false,
   });
@@ -110,7 +110,7 @@ function StoreData({section}:{section:Section}){
     finally{setBusy("");}
   }
   async function prepareDropPrint(){
-    if(!selectedDrops.length||selectedDrops.length>50)return;
+    if(busy||pendingPrintIds.length||!selectedDrops.length||selectedDrops.length>50)return;
     const target=window.open("about:blank","_blank");
     if(!target){setMessage("Permita a abertura de uma nova aba para preparar a impressão.");return;}
     target.opener=null;target.document.body.textContent="Preparando cartazes…";
@@ -143,7 +143,7 @@ function StoreData({section}:{section:Section}){
   const statusNames=section==="promotions"?promotionNames:labelNames;
   return <>
     <div className="data-toolbar">
-      {section==="products"?<label>Buscar produto por nome<input aria-label="Buscar produto por nome" type="search" maxLength={100} value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Digite o nome do produto"/></label>:<label>Status<select aria-label="Status" value={status} onChange={(e)=>{setStatus(e.target.value);setOffset(0);}}><option value="">Todos</option>{Object.entries(statusNames).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></label>}
+      {section==="products"?<label>Buscar produto por nome<input aria-label="Buscar produto por nome" type="search" maxLength={100} value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Digite o nome do produto"/></label>:<label>Status<select aria-label="Status" value={status} onChange={(e)=>{setStatus(e.target.value);setOffset(0);}}><option value="">Todos</option>{section==="labels"&&<option value="due">Vencidos, aguardando retirada</option>}{Object.entries(statusNames).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></label>}
       <button className="tool-button" disabled={list.isFetching||!!busy} onClick={()=>void list.refetch()}>Atualizar</button>
     </div>
       {section==="products"&&<>
@@ -155,9 +155,9 @@ function StoreData({section}:{section:Section}){
           {priceDrops===null?<p className="connection-footnote">Depois de importar um CSV, os produtos com redução aparecem aqui para seleção.</p>:!priceDrops.length?<p className="connection-empty">Nenhuma redução de preço foi encontrada nesta importação.</p>:<>
             <div className="price-drop-toolbar"><span>{priceDrops.length} redução(ões) encontrada(s). Selecione até 50 cartazes.</span><button className="tool-button" type="button" disabled={!!busy} onClick={()=>setSelectedDrops(priceDrops.slice(0,50).map((item)=>item.productId))}>Selecionar até 50</button></div>
             <div className="price-drop-list">{priceDrops.map((item)=><label className="price-drop-row" key={item.id}><input type="checkbox" checked={selectedDrops.includes(item.productId)} disabled={!!busy||(!selectedDrops.includes(item.productId)&&selectedDrops.length>=50)} onChange={(event)=>setSelectedDrops((current)=>event.target.checked?[...current,item.productId]:current.filter((value)=>value!==item.productId))}/><span><strong>{item.productName}</strong><small>De R$ {decimalToBrazilian(item.oldAmount!)} para <b>R$ {decimalToBrazilian(item.newAmount)}</b></small></span><span className="price-drop-delta">− R$ {decimalToBrazilian(centsToDecimal(decimalToCents(item.oldAmount!)-decimalToCents(item.newAmount)))}</span></label>)}</div>
-            <div className="form-actions"><button className="button" type="button" disabled={!selectedDrops.length||!!busy} onClick={()=>void prepareDropPrint()}><Printer size={16}/>{busy==="print"?"Preparando…":`Criar e preparar impressão (${selectedDrops.length})`}</button><span className="connection-footnote">Cada cartaz usa o preço atualizado do catálogo.</span></div>
+            <div className="form-actions"><button className="button" type="button" disabled={!selectedDrops.length||!!busy||!!pendingPrintIds.length} onClick={()=>void prepareDropPrint()}><Printer size={16}/>{busy==="print"?"Preparando…":`Criar e preparar impressão (${selectedDrops.length})`}</button><span className="connection-footnote">Cada cartaz usa o preço atualizado do catálogo.</span></div>
           </>}
-          {!!pendingPrintIds.length&&<div className="print-confirm"><span>{pendingPrintIds.length} cartaz(es) preparados.</span><button className="tool-button" type="button" disabled={!!busy} onClick={()=>void confirmDropPrint()}><Check size={16}/>Confirmar que imprimi</button></div>}
+          {!!pendingPrintIds.length&&<div className="print-confirm"><span>{pendingPrintIds.length} cartaz(es) preparados.</span><button className="tool-button" type="button" disabled={!!busy} onClick={()=>void confirmDropPrint()}><Check size={16}/>Confirmar que imprimi</button><button className="tool-button" disabled={!!busy} onClick={()=>{if(window.confirm("Encerrar esta tentativa? Os cartazes sem confirmação continuarão aguardando impressão."))setPendingPrintIds([]);}}>Encerrar tentativa</button></div>}
         </section>
       </>}
     {section==="labels"&&<p className="connection-footnote">Registros da loja. A composição visual personalizada permanece nos rascunhos deste navegador.</p>}
@@ -168,7 +168,7 @@ function StoreData({section}:{section:Section}){
       <tbody>
         {products.map((item)=><tr key={item.productId}><td>{item.name}</td><td>R$ {decimalToBrazilian(item.currentAmount)}</td><td>{item.unit}</td><td>{dateTime(item.priceUpdatedAt)}</td><td><div className="row-actions"><button className="button" disabled={!!busy} onClick={()=>void action(item.productId,()=>create(item.productId))}>Criar cartaz</button>{canManage&&<button className="tool-button" disabled={!!busy} onClick={()=>setPromotionProduct(item)}>Agendar promoção</button>}</div></td></tr>)}
         {promotions.map((item)=><tr key={item.id}><td>{item.productName}</td><td><small>De R$ {decimalToBrazilian(item.regularAmount)}</small><br/>R$ {decimalToBrazilian(item.promotionalAmount)}</td><td><span className="data-badge">{promotionNames[item.status]}</span></td><td>{dateTime(item.startsAt)}<br/>{dateTime(item.endsAt)}</td><td><div className="row-actions">{["scheduled","active"].includes(item.status)&&<><button className="button" disabled={!!busy} onClick={()=>void action(item.id,()=>create(item.productId,item.id))}>Criar cartaz</button>{canManage&&<button className="tool-button" disabled={!!busy} onClick={()=>{if(window.confirm("Cancelar esta promoção? Os cartazes impressos ficarão pendentes de retirada."))void action(item.id,async()=>{await service.cancelPromotion(id,item.id);await list.refetch();});}}>Cancelar</button>}</>}</div></td></tr>)}
-        {labels.map((item)=><tr key={item.id}><td>{item.productName}<small className="record-id">{item.id}</small></td><td>R$ {decimalToBrazilian(item.displayAmount)}</td><td><span className="data-badge">{labelNames[item.status]}</span></td><td>{dateTime(item.createdAt)}</td><td><button className="tool-button" disabled={!!busy} onClick={()=>void action(item.id,async()=>open(item))}>Abrir no editor</button></td></tr>)}
+        {labels.map((item)=><tr key={item.id}><td>{item.productName}<small className="record-id">{item.id}</small></td><td>R$ {decimalToBrazilian(item.displayAmount)}</td><td><span className="data-badge">{labelNames[item.status]}</span></td><td>{dateTime(item.createdAt)}{item.removalDueAt&&<small className="record-id">Retirada: {dateTime(item.removalDueAt)}</small>}</td><td><div className="row-actions"><button className="tool-button" disabled={!!busy} onClick={()=>void action(item.id,async()=>open(item))}>Abrir no editor</button>{item.status==="printed"&&<button className="tool-button" disabled={!!busy} onClick={()=>{if(window.confirm("Confirma que o cartaz foi retirado da loja?"))void action(item.id,async()=>{await service.removed(id,item.id);await queryClient.invalidateQueries({queryKey:["store",userId,id]});setMessage("Retirada registrada.");});}}>Confirmar retirada</button>}</div></td></tr>)}
       </tbody>
     </table></div>}
     <div className="pagination"><button className="tool-button" disabled={offset===0||list.isFetching||!!busy} onClick={()=>setOffset(Math.max(0,offset-pageSize))}>Anterior</button><span>Página {Math.floor(offset/pageSize)+1}</span><button className="tool-button" disabled={count<pageSize||list.isFetching||!!busy} onClick={()=>setOffset(offset+pageSize)}>Próxima</button></div>

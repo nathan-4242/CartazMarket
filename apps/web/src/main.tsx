@@ -1,3 +1,4 @@
+import { HistoryPage } from "./connection/HistoryPage";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConnectionProvider, Settings as ConnectionSettings, AccountSummary } from "./connection/Auth";
 import { StorePage } from "./connection/StorePage";
@@ -18,9 +19,9 @@ const modules = [
   { name: "Meus Cartazes", icon: Tags, phase: "Integração", path: "/cartazes" },
   { name: "Produtos", icon: Package, phase: "Integração", path: "/produtos" },
   { name: "Promoções", icon: Tag, phase: "Integração", path: "/promocoes" },
-  { name: "Alterações de Preços", icon: TrendingUp, phase: "Operação comercial" },
+  { name: "Alterações de Preços", icon: TrendingUp, phase: "Operação comercial", path: "/alteracoes-de-precos" },
   { name: "Impressão", icon: Printer, phase: "Impressão", path: "/impressao" },
-  { name: "Histórico", icon: Clock3, phase: "Operação comercial" },
+  { name: "Histórico", icon: Clock3, phase: "Operação comercial", path: "/historico" },
   { name: "Configurações", icon: Settings, phase: "Integração", path: "/configuracoes" },
 ];
 
@@ -62,9 +63,9 @@ function Dashboard() {
         <span className="status" data-state={connection} role="status">
           <span className="dot" />{connectionLabels[connection]}
         </span>
-        <button className="icon-button" type="button" aria-label="Notificações indisponíveis" disabled>
+        <Link className="icon-button" to="/alertas" aria-label="Alertas de retirada">
           <Bell size={19} />
-        </button>
+        </Link>
       </header>
       <main id="conteudo">
         <div className="intro">
@@ -143,6 +144,9 @@ function App() {
           <Route path="configuracoes" element={<ConnectionSettings/>}/>
           <Route path="produtos" element={<StorePage section="products"/>}/>
           <Route path="promocoes" element={<StorePage section="promotions"/>}/>
+          <Route path="alertas" element={<HistoryPage section="alerts"/>}/>
+          <Route path="historico" element={<HistoryPage section="imports"/>}/>
+          <Route path="alteracoes-de-precos" element={<HistoryPage section="price-history"/>}/>
           <Route path="cartazes" element={<StorePage section="labels"/>}/>
           <Route path="editor" element={<Editor key="editor" />} />
           <Route path="impressao" element={<Editor key="impressao" printing />} />
